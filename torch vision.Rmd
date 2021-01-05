@@ -1,0 +1,180 @@
+---
+title: "Torch For E Example"
+output:
+  html_document:
+    df_print: paged
+  html_notebook: default
+  pdf_document: default
+---
+
+Adapted from: https://medium.com/pytorch/please-allow-me-to-introduce-myself-torch-for-r-9ea0f361ea7e 
+
+#Importing Necessary Package
+```{r}
+#library(devtools)
+#install_github("mlverse/torch")
+#install.packages("torchvision")
+
+library(torch)
+library(torchvision)
+```
+
+#Data Preparation 
+```{r}
+
+train_ds <- kmnist_dataset(
+  ".",
+  download = TRUE,
+  train = TRUE,
+  transform = transform_to_tensor
+)
+
+test_ds <- kmnist_dataset(
+  ".",
+  download = TRUE,
+  train = FALSE,
+  transform = transform_to_tensor
+)
+
+train_ds[1][[1]]$size()
+
+train_dl <- dataloader(train_ds, batch_size = 20, shuffle = TRUE, drop_last=TRUE)
+test_dl <- dataloader(test_ds, batch_size = 20, drop_last=TRUE)
+
+train_iter <- train_dl$.iter()
+train_iter$.next()
+
+#print out the 1st 32 characters
+par(mfrow = c(4,8), mar = rep(0, 4))
+images <- train_dl$.iter()$.next()[[1]][1:32, 1, , ] 
+images %>%
+  purrr::array_tree(1) %>%
+  purrr::map(as.raster) %>%
+  purrr::iwalk(~{plot(.x)})
+```
+
+#Neural Net Definition 
+```{r}
+
+net <- nn_module(
+  
+  "KMNIST-CNN",
+  
+  initialize = function() {
+    # in_channels, out_channels, kernel_size, stride = 1, padding = 0
+    self$conv1 <- nn_conv2d(1, 32, 5)
+    self$conv2 <- nn_conv2d(32, 64, 5)
+    self$dropout1 <- nn_dropout2d(0.25)
+    self$fc1 <- nn_linear(64*10*10, 256)
+    self$fc2 <- nn_linear(256, 10)
+  },
+  
+  forward = function(x) {
+    x %>% 
+      self$conv1() %>%
+       nnf_relu() %>%
+      self$conv2() %>%
+       nnf_relu() %>%
+      nnf_max_pool2d(2) %>%
+      self$dropout1() %>%
+      torch_flatten(start_dim = 2) %>%
+      self$fc1() %>%
+       nnf_relu() %>%
+      self$fc2() %>%
+       nnf_sigmoid()
+  }
+)
+
+model<- net()
+```
+
+
+
+#Tensor size calculator and pre-testing
+```{r}
+#dimension of input tensor
+x <- torch_randn(c(1, 1, 28, 28))
+
+conv1 <- nn_conv2d(1, 32, 5)
+conv1(x)$size()
+
+conv2 <- nn_conv2d(32, 64, 5)
+conv2(conv1(x))$size()
+
+maxpool1 <- nn_max_pool2d(2)
+maxpool1(conv2(conv1(x)))$size()
+
+torch_flatten(maxpool1(conv2(conv1(x))), start_dim = 2)$size()
+
+linear1 <- nn_linear(64*10*10, 256)
+linear1(torch_flatten(maxpool1(conv2(conv1(x))), start_dim = 2))$size()
+
+linear2 <- nn_linear(256, 10)
+linear2(linear1(torch_flatten(maxpool1(conv2(conv1(x))), start_dim = 2)))$size()
+```
+
+#Network Training 
+
+#Cross Entrpy
+https://www.desmos.com/calculator/zytm2sf56e
+
+```{r}
+
+model <- net()
+model$to(device = "cpu")
+
+optimizer <- optim_adam(model$parameters)
+
+for (epoch in 1:5) {
+  l <- c()
+  i <- 1
+  for (b in enumerate(train_dl)) {
+    # make sure each batch's gradient updates are calculated from a fresh start
+    optimizer$zero_grad()
+    # get model predictions
+    output <- model(b[[1]]$to(device = "cpu"))
+    # calculate loss
+    loss <- nnf_cross_entropy(output, b[[2]]$to(device = "cpu"))
+    # calculate gradient
+    loss$backward()
+    # apply weight updates
+    optimizer$step()
+    # track losses
+    l <- c(l, loss$item())
+    i <- i + 1
+    if(i %% 100 == 0){cat(paste("Loss at",mean(l),"-- i at:",i,"\n"))}
+  }
+  cat(sprintf("Loss at epoch %d: %3f\n", epoch, mean(l)))
+}
+
+model$eval()
+```
+
+#Model Evaluation 
+```{r}
+test_losses <- c()
+total <- 0
+correct <- 0
+count <- 0
+for (b in enumerate(test_dl)) {
+  optimizer$zero_grad()
+  # get model predictions
+  output <- model(b[[1]]$to(device = "cpu"))
+  labels <- b[[2]]$to(device = "cpu")
+  # calculate loss
+  loss <- nnf_cross_entropy(output, labels)
+  test_losses <- c(test_losses, loss$item())
+  # torch_max returns a list, with position 1 containing the values 
+  # and position 2 containing the respective indices
+  predicted <- torch_max(output$data(), dim = 2)[[2]]
+  # add number of correct classifications in this batch to the aggregate
+  correct <- correct + as.numeric((predicted == labels)$sum())
+  count <- count + 1
+  if(count %% 100 == 0){cat(paste("Correct",correct,";count",count*20,"\n"))}
+}
+
+mean(test_losses)
+correct/(count*20)
+
+```
+
