@@ -3,8 +3,8 @@ title: "Torch For E Example"
 output:
   html_document:
     df_print: paged
-  html_notebook: default
   pdf_document: default
+  html_notebook: default
 ---
 
 Adapted from: https://medium.com/pytorch/please-allow-me-to-introduce-myself-torch-for-r-9ea0f361ea7e 
@@ -12,7 +12,7 @@ Adapted from: https://medium.com/pytorch/please-allow-me-to-introduce-myself-tor
 #Importing Necessary Package
 ```{r}
 #library(devtools)
-#install_github("mlverse/torch")
+#install.packages("torch")
 #install.packages("torchvision")
 
 library(torch)
@@ -38,13 +38,13 @@ test_ds <- kmnist_dataset(
 
 train_ds[1][[1]]$size()
 
-train_dl <- dataloader(train_ds, batch_size = 20, shuffle = TRUE, drop_last=TRUE)
-test_dl <- dataloader(test_ds, batch_size = 20, drop_last=TRUE)
+train_dl <- dataloader(train_ds, batch_size = 20, shuffle = TRUE, drop_last=FALSE)
+test_dl <- dataloader(test_ds, batch_size = 20, shuffle = TRUE, drop_last=FALSE)
 
 train_iter <- train_dl$.iter()
 train_iter$.next()
 
-#print out the 1st 32 characters
+#print out the 1st batch of characters
 par(mfrow = c(4,8), mar = rep(0, 4))
 images <- train_dl$.iter()$.next()[[1]][1:32, 1, , ] 
 images %>%
@@ -116,7 +116,9 @@ linear2(linear1(torch_flatten(maxpool1(conv2(conv1(x))), start_dim = 2)))$size()
 #Network Training 
 
 #Cross Entrpy
-https://www.desmos.com/calculator/zytm2sf56e
+https://www.desmos.com/calculator/zytm2sf56e \n
+https://towardsdatascience.com/cross-entropy-for-dummies-5189303c7735
+
 
 ```{r}
 
@@ -125,10 +127,10 @@ model$to(device = "cpu")
 
 optimizer <- optim_adam(model$parameters)
 
-for (epoch in 1:5) {
+for (epoch in 1:2) {
   l <- c()
   i <- 1
-  for (b in enumerate(train_dl)) {
+  for (b in enumerate(test_dl)) {
     # make sure each batch's gradient updates are calculated from a fresh start
     optimizer$zero_grad()
     # get model predictions
@@ -156,7 +158,7 @@ test_losses <- c()
 total <- 0
 correct <- 0
 count <- 0
-for (b in enumerate(test_dl)) {
+for (b in enumerate(train_dl)) {
   optimizer$zero_grad()
   # get model predictions
   output <- model(b[[1]]$to(device = "cpu"))
