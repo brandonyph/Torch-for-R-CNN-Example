@@ -1,10 +1,8 @@
 ---
-title: "Torch For E Example"
+title: "Torch For Example"
 output:
-  html_document:
-    df_print: paged
-  pdf_document: default
-  html_notebook: default
+  md_document:
+    variant: gfm
 ---
 
 Adapted from: https://medium.com/pytorch/please-allow-me-to-introduce-myself-torch-for-r-9ea0f361ea7e 
@@ -62,10 +60,10 @@ net <- nn_module(
   
   initialize = function() {
     # in_channels, out_channels, kernel_size, stride = 1, padding = 0
-    self$conv1 <- nn_conv2d(1, 32, 5)
-    self$conv2 <- nn_conv2d(32, 64, 5)
+    self$conv1 <- nn_conv2d(1, 8, 5)
+    self$conv2 <- nn_conv2d(8, 16, 5)
     self$dropout1 <- nn_dropout2d(0.25)
-    self$fc1 <- nn_linear(64*10*10, 256)
+    self$fc1 <- nn_linear(16*10*10, 256)
     self$fc2 <- nn_linear(256, 10)
   },
   
@@ -116,27 +114,27 @@ linear2(linear1(torch_flatten(maxpool1(conv2(conv1(x))), start_dim = 2)))$size()
 #Network Training 
 
 #Cross Entrpy
-https://www.desmos.com/calculator/zytm2sf56e \n
+https://www.desmos.com/calculator/zytm2sf56e , 
 https://towardsdatascience.com/cross-entropy-for-dummies-5189303c7735
 
 
-```{r}
+```{r,cache=TRUE}
 
 model <- net()
-model$to(device = "cpu")
+model$to(device = "cuda")
 
 optimizer <- optim_adam(model$parameters)
 
-for (epoch in 1:2) {
+for (epoch in 1:5) {
   l <- c()
   i <- 1
-  for (b in enumerate(test_dl)) {
+  for (b in enumerate(train_dl)) {
     # make sure each batch's gradient updates are calculated from a fresh start
     optimizer$zero_grad()
     # get model predictions
-    output <- model(b[[1]]$to(device = "cpu"))
+    output <- model(b[[1]]$to(device = "cuda"))
     # calculate loss
-    loss <- nnf_cross_entropy(output, b[[2]]$to(device = "cpu"))
+    loss <- nnf_cross_entropy(output, b[[2]]$to(device = "cuda"))
     # calculate gradient
     loss$backward()
     # apply weight updates
@@ -153,16 +151,15 @@ model$eval()
 ```
 
 #Model Evaluation 
-```{r}
+```{r,cache=TRUE}
 test_losses <- c()
 total <- 0
 correct <- 0
 count <- 0
-for (b in enumerate(train_dl)) {
-  optimizer$zero_grad()
+for (b in enumerate(test_dl)) {
   # get model predictions
-  output <- model(b[[1]]$to(device = "cpu"))
-  labels <- b[[2]]$to(device = "cpu")
+  output <- model(b[[1]]$to(device = "cuda"))
+  labels <- b[[2]]$to(device = "cuda")
   # calculate loss
   loss <- nnf_cross_entropy(output, labels)
   test_losses <- c(test_losses, loss$item())
@@ -170,7 +167,7 @@ for (b in enumerate(train_dl)) {
   # and position 2 containing the respective indices
   predicted <- torch_max(output$data(), dim = 2)[[2]]
   # add number of correct classifications in this batch to the aggregate
-  correct <- correct + as.numeric((predicted == labels)$sum())
+  correct <- correct + as.numeric((predicted == labels)$sum()$to(device = "cpu"))
   count <- count + 1
   if(count %% 100 == 0){cat(paste("Correct",correct,";count",count*20,"\n"))}
 }
